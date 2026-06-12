@@ -13,7 +13,6 @@ app.use(express.static(path.join(__dirname, "public")));
 require("dotenv").config();
 
 const MONGODB_URI = process.env.MONGODB_URI;
-console.log(MONGODB_URI);
 let db;
 
 async function connectDB() {
@@ -114,8 +113,19 @@ app.get("/api/listings", async (req, res) => {
     if (property_type) {
       query["property_type"] = property_type;
     }
+    console.log(
+      "bedrooms value:",
+      JSON.stringify(bedrooms),
+      "ends with plus:",
+      bedrooms.toString().endsWith("plus"),
+    );
     if (bedrooms && bedrooms !== "") {
-      query["bedrooms"] = parseInt(bedrooms, 10);
+      if (bedrooms.toString().endsWith("5plus")) {
+        const num = parseInt(bedrooms);
+        query["bedrooms"] = { $gte: num };
+      } else {
+        query["bedrooms"] = parseInt(bedrooms, 10);
+      }
     }
 
     const listings = await db
@@ -137,6 +147,7 @@ app.get("/api/listings", async (req, res) => {
       .toArray();
 
     res.json({ listings: listings.map(mapListing) });
+    // console.log("final query:", JSON.stringify(query));
   } catch (err) {
     console.error("Listings error:", err);
     res.status(500).json({ error: err.message });
