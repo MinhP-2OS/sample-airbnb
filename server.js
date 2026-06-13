@@ -113,12 +113,6 @@ app.get("/api/listings", async (req, res) => {
     if (property_type) {
       query["property_type"] = property_type;
     }
-    console.log(
-      "bedrooms value:",
-      JSON.stringify(bedrooms),
-      "ends with plus:",
-      bedrooms.toString().endsWith("plus"),
-    );
     if (bedrooms && bedrooms !== "") {
       if (bedrooms.toString().endsWith("5plus")) {
         const num = parseInt(bedrooms);
@@ -143,7 +137,6 @@ app.get("/api/listings", async (req, res) => {
         bedrooms: 1,
         "images.picture_url": 1,
       })
-      .limit(20)
       .toArray();
 
     res.json({ listings: listings.map(mapListing) });
