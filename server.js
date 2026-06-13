@@ -3,6 +3,8 @@ const { MongoClient } = require("mongodb");
 const path = require("path");
 const cors = require("cors");
 
+require("dotenv").config();
+
 const app = express();
 const PORT = 5000;
 
@@ -10,14 +12,13 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
-require("dotenv").config();
 
 const MONGODB_URI = process.env.MONGODB_URI;
 let db;
 
 async function connectDB() {
   if (!MONGODB_URI) {
-    console.warn("MONGODB_URI not set. Please add it to your .env file.");
+    console.warn("MONGODB_URI not set. Please add it to environment secrets.");
     return;
   }
   try {
@@ -30,13 +31,11 @@ async function connectDB() {
   }
 }
 
-// Helper: convert Decimal128 price to a plain float
 function toPrice(val) {
   if (!val) return 0;
   return parseFloat(val.toString());
 }
 
-// Helper: map a raw listing document to a clean API shape
 function mapListing(l) {
   return {
     listing_id: l._id.toString(),
@@ -58,7 +57,7 @@ function mapListing(l) {
   };
 }
 
-// GET /api/property-types  — distinct values from DB
+// GET /api/property-types
 app.get("/api/property-types", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
@@ -71,20 +70,22 @@ app.get("/api/property-types", async (req, res) => {
   }
 });
 
-// GET /api/listings  — search/filter listings
-// Query params: market (required for search), property_type, bedrooms
-// If no params → return 12 random listings for the homepage
+// GET /api/listings — search/filter with pagination
+// Query params: market, property_type, bedrooms, page (default 1), limit (default 20)
 app.get("/api/listings", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { market, property_type, bedrooms } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = 20;
+    const skip = (page - 1) * limit;
 
-    // No filters → show random sample for homepage
+    // No filters → random sample for homepage (no pagination needed)
     if (!market && !property_type && !bedrooms) {
       const listings = await db
         .collection("listingsAndReviews")
         .aggregate([
-          { $sample: { size: 12 } },
+          { $sample: { size: 20 } },
           {
             $project: {
               name: 1,
@@ -101,13 +102,17 @@ app.get("/api/listings", async (req, res) => {
           },
         ])
         .toArray();
-      return res.json({ listings: listings.map(mapListing) });
+      return res.json({
+        listings: listings.map(mapListing),
+        total: listings.length,
+        page: 1,
+        totalPages: 1,
+      });
     }
 
     // Build filter query
     const query = {};
     if (market) {
-      // Match address.market with case-insensitive regex
       query["address.market"] = { $regex: new RegExp(market.trim(), "i") };
     }
     if (property_type) {
@@ -115,51 +120,59 @@ app.get("/api/listings", async (req, res) => {
     }
     if (bedrooms && bedrooms !== "") {
       if (bedrooms.toString().endsWith("5plus")) {
-        const num = parseInt(bedrooms);
-        query["bedrooms"] = { $gte: num };
+        query["bedrooms"] = { $gte: 5 };
       } else {
         query["bedrooms"] = parseInt(bedrooms, 10);
       }
     }
 
-    const listings = await db
-      .collection("listingsAndReviews")
-      .find(query)
-      .project({
-        name: 1,
-        summary: 1,
-        price: 1,
-        "review_scores.review_scores_rating": 1,
-        "address.market": 1,
-        "address.country": 1,
-        property_type: 1,
-        room_type: 1,
-        bedrooms: 1,
-        "images.picture_url": 1,
-      })
-      .toArray();
+    const projection = {
+      name: 1,
+      summary: 1,
+      price: 1,
+      "review_scores.review_scores_rating": 1,
+      "address.market": 1,
+      "address.country": 1,
+      property_type: 1,
+      room_type: 1,
+      bedrooms: 1,
+      "images.picture_url": 1,
+    };
 
-    res.json({ listings: listings.map(mapListing) });
-    // console.log("final query:", JSON.stringify(query));
+    const [listings, total] = await Promise.all([
+      db
+        .collection("listingsAndReviews")
+        .find(query)
+        .project(projection)
+        .skip(skip)
+        .limit(limit)
+        .toArray(),
+      db.collection("listingsAndReviews").countDocuments(query),
+    ]);
+
+    res.json({
+      listings: listings.map(mapListing),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (err) {
     console.error("Listings error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/listing/:id  — single listing detail + its bookings
+// GET /api/listing/:id — single listing detail + bookings
 app.get("/api/listing/:id", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const id = req.params.id;
 
-    // _id in sample_airbnb is a plain string e.g. "10082422"
     const listing = await db
       .collection("listingsAndReviews")
       .findOne({ _id: id });
     if (!listing) return res.status(404).json({ error: "Listing not found" });
 
-    // Fetch existing bookings from the bookings collection
     const bookings = await db
       .collection("bookings")
       .find({ listingID: id })
@@ -168,6 +181,7 @@ app.get("/api/listing/:id", async (req, res) => {
         departureDate: 1,
         numberOfGuests: 1,
         guest: 1,
+        clientID: 1,
       })
       .toArray();
 
@@ -189,15 +203,18 @@ app.get("/api/listing/:id", async (req, res) => {
   }
 });
 
-// POST /api/bookings  — create a new booking in the bookings collection
+// POST /api/bookings — upsert client, then create booking
 app.post("/api/bookings", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const {
       listing_id,
-      guest_first_name,
-      guest_last_name,
-      guest_email,
+      client_name,
+      email_address,
+      daytime_phone_number,
+      mobile_number,
+      postal_address,
+      home_address,
       arrival_date,
       departure_date,
       number_of_guests,
@@ -207,73 +224,112 @@ app.post("/api/bookings", async (req, res) => {
     // Validate required fields
     if (
       !listing_id ||
-      !guest_first_name ||
-      !guest_last_name ||
-      !guest_email ||
+      !client_name ||
+      !email_address ||
       !arrival_date ||
       !departure_date
     ) {
-      return res.status(400).json({ error: "All fields are required" });
+      return res.status(400).json({
+        error:
+          "listing_id, client_name, email_address, arrival_date and departure_date are required",
+      });
     }
 
     const arrival = new Date(arrival_date);
     const departure = new Date(departure_date);
+    if (isNaN(arrival) || isNaN(departure)) {
+      return res.status(400).json({ error: "Invalid dates provided" });
+    }
     if (departure <= arrival) {
       return res.status(400).json({ error: "Departure must be after arrival" });
     }
 
     const nights = Math.ceil((departure - arrival) / (1000 * 60 * 60 * 24));
 
-    // Verify the listing exists
+    // Verify listing exists
     const listing = await db
       .collection("listingsAndReviews")
       .findOne({ _id: listing_id });
     if (!listing) return res.status(404).json({ error: "Listing not found" });
 
+    // Upsert registeredClient by email
+    const clientsCol = db.collection("registeredClients");
+    const existingClient = await clientsCol.findOne({
+      emailAddress: email_address,
+    });
+
+    let clientID;
+    let isNewClient = false;
+
+    if (existingClient) {
+      clientID = existingClient._id;
+      // Update fields that may have changed
+      await clientsCol.updateOne(
+        { _id: clientID },
+        {
+          $set: {
+            name: client_name,
+            daytimePhoneNumber:
+              daytime_phone_number || existingClient.daytimePhoneNumber || "",
+            mobileNumber: mobile_number || existingClient.mobileNumber || "",
+            postalAddress: postal_address || existingClient.postalAddress || "",
+            homeAddress: home_address || existingClient.homeAddress || "",
+          },
+        },
+      );
+    } else {
+      isNewClient = true;
+      clientID = "C" + Date.now();
+      await clientsCol.insertOne({
+        _id: clientID,
+        name: client_name,
+        emailAddress: email_address,
+        daytimePhoneNumber: daytime_phone_number || "",
+        mobileNumber: mobile_number || "",
+        postalAddress: postal_address || "",
+        homeAddress: home_address || "",
+      });
+    }
+
+    // Calculate financials
     const price = toPrice(listing.price);
     const deposit = parseFloat(deposit_paid) || 0;
     const total = nights * price;
-    const balance = total - deposit;
+    const balance = Math.max(0, total - deposit);
 
-    // Generate a sequential-looking booking ID
     const bookingId = "B" + Date.now();
-    const clientId = "C" + Date.now();
-
-    // Balance due date = 7 days before arrival
     const balanceDueDate = new Date(arrival);
     balanceDueDate.setDate(balanceDueDate.getDate() - 7);
+
+    const nameParts = client_name.trim().split(/\s+/);
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
 
     const bookingDoc = {
       _id: bookingId,
       listingID: listing_id,
-      clientID: clientId,
+      clientID,
       arrivalDate: arrival,
       departureDate: departure,
       depositPaid: deposit,
       balanceDue: balance,
-      balanceDueDate: balanceDueDate,
+      balanceDueDate,
       numberOfGuests: parseInt(number_of_guests, 10) || 1,
-      guest: [
-        {
-          firstName: guest_first_name,
-          lastName: guest_last_name,
-          email: guest_email,
-        },
-      ],
+      guest: [{ firstName, lastName, email: email_address }],
     };
 
     await db.collection("bookings").insertOne(bookingDoc);
 
     res.json({
       success: true,
+      is_new_client: isNewClient,
       booking: {
         booking_id: bookingId,
-        client_id: clientId,
+        client_id: clientID,
         listing_id,
         listing_name: listing.name,
-        guest_first_name,
-        guest_last_name,
-        guest_email,
+        client_name,
+        email_address,
         arrival_date: arrival.toISOString(),
         departure_date: departure.toISOString(),
         nights,
@@ -291,7 +347,7 @@ app.post("/api/bookings", async (req, res) => {
   }
 });
 
-// GET /api/bookings/:listing_id  — all bookings for a listing
+// GET /api/bookings/:listing_id
 app.get("/api/bookings/:listing_id", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {

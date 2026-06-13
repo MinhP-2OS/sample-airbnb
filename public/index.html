@@ -82,12 +82,11 @@
     </div>
 
     <div class="container py-4">
-      <!-- DB not connected warning -->
       <div id="noDbAlert" class="alert alert-warning d-none" role="alert">
         <i class="bi bi-exclamation-triangle-fill me-2"></i>
         <strong>Database not connected.</strong>
-        Please add your <code>MONGODB_URI</code> to the <code>.env</code> file
-        and restart the server.
+        Please add your <code>MONGODB_URI</code> to the environment secrets and
+        restart the server.
       </div>
 
       <div
@@ -112,6 +111,8 @@
       </div>
 
       <div id="listingsGrid" class="row g-4"></div>
+
+      <nav class="mt-4" id="pagination" aria-label="Results pagination"></nav>
     </div>
 
     <footer class="bg-dark text-white py-4 mt-5">

@@ -45,7 +45,7 @@
       <div id="bookingContent" class="d-none">
         <div class="row g-4">
           <!-- Left: Property Details -->
-          <div class="col-lg-7">
+          <div class="col-lg-6">
             <div id="propertyImage" class="mb-4 d-none">
               <img
                 id="propImg"
@@ -127,53 +127,19 @@
           </div>
 
           <!-- Right: Booking Form -->
-          <div class="col-lg-5">
-            <div class="card shadow border-0 sticky-top" style="top: 20px">
+          <div class="col-lg-6">
+            <div class="card shadow border-0">
               <div class="card-header bg-danger text-white py-3">
                 <h5 class="mb-0 fw-bold">
                   <i class="bi bi-calendar-plus me-2"></i>Reserve This Property
                 </h5>
               </div>
               <div class="card-body p-4">
-                <form id="bookingForm">
-                  <div class="row g-2 mb-3">
-                    <div class="col-6">
-                      <label class="form-label fw-semibold"
-                        >First Name <span class="text-danger">*</span></label
-                      >
-                      <input
-                        type="text"
-                        class="form-control"
-                        id="guestFirstName"
-                        required
-                        placeholder="Jane"
-                      />
-                    </div>
-                    <div class="col-6">
-                      <label class="form-label fw-semibold"
-                        >Last Name <span class="text-danger">*</span></label
-                      >
-                      <input
-                        type="text"
-                        class="form-control"
-                        id="guestLastName"
-                        required
-                        placeholder="Smith"
-                      />
-                    </div>
-                  </div>
-                  <div class="mb-3">
-                    <label class="form-label fw-semibold"
-                      >Email <span class="text-danger">*</span></label
-                    >
-                    <input
-                      type="email"
-                      class="form-control"
-                      id="guestEmail"
-                      required
-                      placeholder="jane@example.com"
-                    />
-                  </div>
+                <form id="bookingForm" novalidate>
+                  <!-- Stay Dates -->
+                  <h6 class="fw-bold text-danger mb-3">
+                    <i class="bi bi-calendar-range me-1"></i>Stay Dates
+                  </h6>
                   <div class="row g-2 mb-3">
                     <div class="col-6">
                       <label class="form-label fw-semibold"
@@ -198,9 +164,12 @@
                       />
                     </div>
                   </div>
-                  <div class="row g-2 mb-3">
+
+                  <div class="row g-2 mb-4">
                     <div class="col-6">
-                      <label class="form-label fw-semibold">Guests</label>
+                      <label class="form-label fw-semibold"
+                        >Number of Guests</label
+                      >
                       <select class="form-select" id="numGuests">
                         <option value="1">1</option>
                         <option value="2">2</option>
@@ -225,11 +194,10 @@
                     </div>
                   </div>
 
-                  <!-- Price summary (shown after dates selected) -->
+                  <!-- Price summary -->
                   <div
                     id="priceSummary"
-                    class="p-3 bg-light rounded mb-3 d-none"
-                    style="border: 1px solid #dee2e6"
+                    class="p-3 bg-light rounded mb-4 d-none"
                   >
                     <div class="d-flex justify-content-between small">
                       <span
@@ -251,12 +219,99 @@
                         >$<span id="sumBalance"></span
                       ></span>
                     </div>
+                    <div class="text-muted small mt-1">
+                      Balance due date: <span id="sumBalanceDueDate"></span>
+                    </div>
+                  </div>
+
+                  <!-- Guest / Client Details -->
+                  <h6 class="fw-bold text-danger mb-3">
+                    <i class="bi bi-person-fill me-1"></i>Guest Details
+                  </h6>
+
+                  <div class="mb-3">
+                    <label class="form-label fw-semibold"
+                      >Full Name <span class="text-danger">*</span></label
+                    >
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="clientName"
+                      required
+                      placeholder="e.g. Jane Smith"
+                    />
+                    <div class="form-text">First and last name</div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="form-label fw-semibold"
+                      >Email Address <span class="text-danger">*</span></label
+                    >
+                    <input
+                      type="email"
+                      class="form-control"
+                      id="emailAddress"
+                      required
+                      placeholder="jane@example.com"
+                    />
+                    <div class="form-text">
+                      Used to look up existing client records
+                    </div>
+                  </div>
+
+                  <div class="row g-2 mb-3">
+                    <div class="col-6">
+                      <label class="form-label fw-semibold"
+                        >Daytime Phone</label
+                      >
+                      <input
+                        type="tel"
+                        class="form-control"
+                        id="daytimePhone"
+                        placeholder="(03) 5352 6218"
+                      />
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label fw-semibold"
+                        >Mobile Number</label
+                      >
+                      <input
+                        type="tel"
+                        class="form-control"
+                        id="mobileNumber"
+                        placeholder="0453 526 218"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="form-label fw-semibold">Postal Address</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="postalAddress"
+                      placeholder="48 Mills Street DALYSTON VIC 3992"
+                    />
+                  </div>
+
+                  <div class="mb-4">
+                    <label class="form-label fw-semibold">Home Address</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="homeAddress"
+                      placeholder="48 Mills Street DALYSTON VIC 3992"
+                    />
+                    <div class="form-text">
+                      Leave blank to use same as postal address
+                    </div>
                   </div>
 
                   <div
                     id="bookingError"
                     class="alert alert-danger d-none"
                   ></div>
+                  <div id="bookingInfo" class="alert alert-info d-none"></div>
 
                   <button
                     type="submit"

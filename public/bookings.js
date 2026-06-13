@@ -117,7 +117,6 @@ function populateDetails(listing) {
     }
   }
 
-  // Show existing bookings from the bookings collection
   if (listing.existing_bookings && listing.existing_bookings.length > 0) {
     document
       .getElementById("existingBookingsSection")
@@ -131,34 +130,40 @@ function populateDetails(listing) {
       const div = document.createElement("div");
       div.className = "card mb-2 border-0 bg-light";
       div.innerHTML = `
-                <div class="card-body py-2 px-3">
-                    <div class="row">
-                        <div class="col-5"><small class="text-muted">Guest</small><br>
-                            <strong>${escapeHtml(guestName)}</strong></div>
-                        <div class="col-3"><small class="text-muted">Arrival</small><br>
-                            <small>${formatDate(b.arrival)}</small></div>
-                        <div class="col-4"><small class="text-muted">Departure</small><br>
-                            <small>${formatDate(b.departure)}</small></div>
-                    </div>
-                </div>`;
+        <div class="card-body py-2 px-3">
+          <div class="row">
+            <div class="col-5"><small class="text-muted">Guest</small><br>
+              <strong>${escapeHtml(guestName)}</strong></div>
+            <div class="col-3"><small class="text-muted">Arrival</small><br>
+              <small>${formatDate(b.arrival)}</small></div>
+            <div class="col-4"><small class="text-muted">Departure</small><br>
+              <small>${formatDate(b.departure)}</small></div>
+          </div>
+        </div>`;
       bList.appendChild(div);
     });
   }
 
-  // Set minimum dates
+  // Set minimum dates to today
   const today = new Date().toISOString().split("T")[0];
   document.getElementById("arrivalDate").min = today;
   document.getElementById("departureDate").min = today;
 
-  document
-    .getElementById("arrivalDate")
-    .addEventListener("change", updatePriceSummary);
-  document
-    .getElementById("departureDate")
-    .addEventListener("change", updatePriceSummary);
+  // Wire up live price summary
+  ["arrivalDate", "departureDate"].forEach((id) =>
+    document.getElementById(id).addEventListener("change", updatePriceSummary),
+  );
   document
     .getElementById("depositPaid")
     .addEventListener("input", updatePriceSummary);
+
+  // Auto-fill home address from postal if blank
+  document.getElementById("postalAddress").addEventListener("blur", () => {
+    const home = document.getElementById("homeAddress");
+    if (!home.value.trim()) {
+      home.value = document.getElementById("postalAddress").value;
+    }
+  });
 }
 
 function updatePriceSummary() {
@@ -167,39 +172,60 @@ function updatePriceSummary() {
   const deposit = parseFloat(document.getElementById("depositPaid").value) || 0;
   const listing = window._listing;
 
+  const summary = document.getElementById("priceSummary");
   if (arrival && departure && listing && listing.price) {
-    const nights = Math.ceil(
-      (new Date(departure) - new Date(arrival)) / (1000 * 60 * 60 * 24),
-    );
+    const arrDate = new Date(arrival);
+    const depDate = new Date(departure);
+    const nights = Math.ceil((depDate - arrDate) / (1000 * 60 * 60 * 24));
     if (nights > 0) {
       const total = nights * listing.price;
-      const balance = total - deposit;
-      document.getElementById("priceSummary").classList.remove("d-none");
+      const balance = Math.max(0, total - deposit);
+      const balanceDue = new Date(arrDate);
+      balanceDue.setDate(balanceDue.getDate() - 7);
+
+      summary.classList.remove("d-none");
       document.getElementById("sumPrice").textContent =
         listing.price.toFixed(2);
       document.getElementById("sumNights").textContent = nights;
       document.getElementById("sumTotal").textContent = total.toFixed(2);
       document.getElementById("sumDeposit").textContent = deposit.toFixed(2);
-      document.getElementById("sumBalance").textContent = Math.max(
-        0,
-        balance,
-      ).toFixed(2);
+      document.getElementById("sumBalance").textContent = balance.toFixed(2);
+      document.getElementById("sumBalanceDueDate").textContent =
+        formatDate(balanceDue);
     } else {
-      document.getElementById("priceSummary").classList.add("d-none");
+      summary.classList.add("d-none");
     }
+  } else {
+    summary.classList.add("d-none");
   }
 }
 
-// TODO: implement true booking with start date, end date, client name, email address, daytime phone number, mobile number, postal address and home address
-
 document.getElementById("bookingForm").addEventListener("submit", async (e) => {
   e.preventDefault();
+
   const errorDiv = document.getElementById("bookingError");
+  const infoDiv = document.getElementById("bookingInfo");
   errorDiv.classList.add("d-none");
+  infoDiv.classList.add("d-none");
 
   const arrival_date = document.getElementById("arrivalDate").value;
   const departure_date = document.getElementById("departureDate").value;
+  const client_name = document.getElementById("clientName").value.trim();
+  const email_address = document.getElementById("emailAddress").value.trim();
 
+  // Client-side validation
+  if (!client_name) {
+    errorDiv.textContent = "Please enter the guest's full name.";
+    errorDiv.classList.remove("d-none");
+    document.getElementById("clientName").focus();
+    return;
+  }
+  if (!email_address) {
+    errorDiv.textContent = "Please enter the guest's email address.";
+    errorDiv.classList.remove("d-none");
+    document.getElementById("emailAddress").focus();
+    return;
+  }
   if (!arrival_date || !departure_date) {
     errorDiv.textContent = "Please select arrival and departure dates.";
     errorDiv.classList.remove("d-none");
@@ -211,6 +237,10 @@ document.getElementById("bookingForm").addEventListener("submit", async (e) => {
     return;
   }
 
+  const postalAddress = document.getElementById("postalAddress").value.trim();
+  const homeAddress =
+    document.getElementById("homeAddress").value.trim() || postalAddress;
+
   const submitBtn = e.target.querySelector('[type="submit"]');
   submitBtn.disabled = true;
   submitBtn.innerHTML =
@@ -219,9 +249,14 @@ document.getElementById("bookingForm").addEventListener("submit", async (e) => {
   try {
     const payload = {
       listing_id: listingId,
-      guest_first_name: document.getElementById("guestFirstName").value.trim(),
-      guest_last_name: document.getElementById("guestLastName").value.trim(),
-      guest_email: document.getElementById("guestEmail").value.trim(),
+      client_name,
+      email_address,
+      daytime_phone_number: document
+        .getElementById("daytimePhone")
+        .value.trim(),
+      mobile_number: document.getElementById("mobileNumber").value.trim(),
+      postal_address: postalAddress,
+      home_address: homeAddress,
       arrival_date,
       departure_date,
       number_of_guests: document.getElementById("numGuests").value,
@@ -240,9 +275,11 @@ document.getElementById("bookingForm").addEventListener("submit", async (e) => {
     const b = data.booking;
     const qs = new URLSearchParams({
       booking_id: b.booking_id,
+      client_id: b.client_id,
+      is_new_client: data.is_new_client ? "1" : "0",
       listing_name: b.listing_name,
-      guest_name: `${b.guest_first_name} ${b.guest_last_name}`,
-      guest_email: b.guest_email,
+      client_name: b.client_name,
+      email_address: b.email_address,
       arrival: b.arrival_date,
       departure: b.departure_date,
       nights: b.nights,

@@ -1,5 +1,8 @@
 const API_BASE = "http://127.0.0.1:5000";
 
+let currentSearchParams = {};
+let currentPage = 1;
+
 function escapeHtml(str) {
   if (!str) return "";
   return String(str)
@@ -26,14 +29,16 @@ async function loadPropertyTypes() {
   }
 }
 
-async function loadListings(params = {}) {
+async function loadListings(params = {}, page = 1) {
   const grid = document.getElementById("listingsGrid");
   const spinner = document.getElementById("loadingSpinner");
   const noResults = document.getElementById("noResults");
   const noDb = document.getElementById("noDbAlert");
   const countBadge = document.getElementById("resultsCount");
+  const paginationEl = document.getElementById("pagination");
 
   grid.innerHTML = "";
+  if (paginationEl) paginationEl.innerHTML = "";
   spinner.classList.remove("d-none");
   noResults.classList.add("d-none");
   if (noDb) noDb.classList.add("d-none");
@@ -43,6 +48,7 @@ async function loadListings(params = {}) {
     if (params.market) qs.set("market", params.market);
     if (params.property_type) qs.set("property_type", params.property_type);
     if (params.bedrooms) qs.set("bedrooms", params.bedrooms);
+    qs.set("page", page);
 
     const res = await fetch(`${API_BASE}/api/listings?${qs}`);
     const data = await res.json();
@@ -50,13 +56,14 @@ async function loadListings(params = {}) {
     spinner.classList.add("d-none");
 
     if (!res.ok || data.error) {
-      // Database not connected
       if (noDb) noDb.classList.remove("d-none");
       countBadge.textContent = "";
       return "db_error";
     }
 
     const listings = data.listings || [];
+    const total = data.total || 0;
+    const totalPages = data.totalPages || 1;
 
     if (listings.length === 0) {
       noResults.classList.remove("d-none");
@@ -64,7 +71,18 @@ async function loadListings(params = {}) {
       return;
     }
 
-    countBadge.textContent = `${listings.length} result${listings.length !== 1 ? "s" : ""}`;
+    const isSearch = !!(
+      params.market ||
+      params.property_type ||
+      params.bedrooms
+    );
+    if (isSearch) {
+      const start = (page - 1) * 20 + 1;
+      const end = Math.min(page * 20, total);
+      countBadge.textContent = `${start}–${end} of ${total} result${total !== 1 ? "s" : ""}`;
+    } else {
+      countBadge.textContent = `${listings.length} featured`;
+    }
 
     listings.forEach((listing) => {
       const col = document.createElement("div");
@@ -127,11 +145,76 @@ async function loadListings(params = {}) {
 
       grid.appendChild(col);
     });
+
+    // Render pagination only for search results with multiple pages
+    if (isSearch && totalPages > 1 && paginationEl) {
+      renderPagination(paginationEl, page, totalPages, params);
+    }
   } catch (e) {
     spinner.classList.add("d-none");
     if (noDb) noDb.classList.remove("d-none");
     console.error("Load listings error:", e);
   }
+}
+
+function renderPagination(container, currentPg, totalPages, params) {
+  const ul = document.createElement("ul");
+  ul.className = "pagination justify-content-center flex-wrap";
+
+  const makeLi = (label, pg, disabled = false, active = false) => {
+    const li = document.createElement("li");
+    li.className = `page-item${disabled ? " disabled" : ""}${active ? " active" : ""}`;
+    const a = document.createElement("a");
+    a.className = "page-link";
+    a.href = "#";
+    a.innerHTML = label;
+    if (!disabled && !active) {
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        currentPage = pg;
+        loadListings(params, pg);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
+    li.appendChild(a);
+    return li;
+  };
+
+  ul.appendChild(makeLi("&laquo;", currentPg - 1, currentPg === 1));
+
+  // Show at most 7 page buttons around current page
+  let start = Math.max(1, currentPg - 3);
+  let end = Math.min(totalPages, currentPg + 3);
+  if (currentPg <= 4) end = Math.min(totalPages, 7);
+  if (currentPg >= totalPages - 3) start = Math.max(1, totalPages - 6);
+
+  if (start > 1) {
+    ul.appendChild(makeLi("1", 1));
+    if (start > 2) {
+      const li = document.createElement("li");
+      li.className = "page-item disabled";
+      li.innerHTML = '<span class="page-link">…</span>';
+      ul.appendChild(li);
+    }
+  }
+
+  for (let p = start; p <= end; p++) {
+    ul.appendChild(makeLi(p, p, false, p === currentPg));
+  }
+
+  if (end < totalPages) {
+    if (end < totalPages - 1) {
+      const li = document.createElement("li");
+      li.className = "page-item disabled";
+      li.innerHTML = '<span class="page-link">…</span>';
+      ul.appendChild(li);
+    }
+    ul.appendChild(makeLi(totalPages, totalPages));
+  }
+
+  ul.appendChild(makeLi("&raquo;", currentPg + 1, currentPg === totalPages));
+
+  container.appendChild(ul);
 }
 
 document.getElementById("searchForm").addEventListener("submit", async (e) => {
@@ -140,14 +223,15 @@ document.getElementById("searchForm").addEventListener("submit", async (e) => {
   const property_type = document.getElementById("propertyType").value;
   const bedrooms = document.getElementById("bedrooms").value;
 
+  currentSearchParams = { market, property_type, bedrooms };
+  currentPage = 1;
+
   document.getElementById("resultsTitle").innerHTML =
     `<i class="bi bi-house-door text-danger me-2"></i>Results for "${escapeHtml(market)}"`;
 
-  await loadListings({ market, property_type, bedrooms });
+  await loadListings(currentSearchParams, 1);
 });
 
-// On page load: populate dropdowns and show random listings.
-// Retry once after 2s in case the DB connection isn't ready yet.
 async function initPage() {
   await loadPropertyTypes();
   const firstTry = await loadListings();

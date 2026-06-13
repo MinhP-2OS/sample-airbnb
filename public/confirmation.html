@@ -35,9 +35,10 @@
                 ></i>
               </div>
               <h2 class="fw-bold mb-1">Booking Confirmed!</h2>
-              <p class="text-muted mb-4">
+              <p class="text-muted mb-1">
                 Your reservation has been saved to the database.
               </p>
+              <div id="clientBadge" class="mb-4"></div>
 
               <div
                 id="confirmationDetails"
@@ -74,39 +75,50 @@
 
       const p = new URLSearchParams(window.location.search);
       const el = document.getElementById("confirmationDetails");
+      const badge = document.getElementById("clientBadge");
+
+      if (p.get("is_new_client") === "1") {
+        badge.innerHTML =
+          '<span class="badge bg-success"><i class="bi bi-person-plus-fill me-1"></i>New client profile created</span>';
+      } else {
+        badge.innerHTML =
+          '<span class="badge bg-info text-dark"><i class="bi bi-person-check-fill me-1"></i>Existing client record updated</span>';
+      }
 
       if (p.get("booking_id")) {
         el.innerHTML = `
-                <table class="table table-sm table-borderless mb-0">
-                    <tbody>
-                        <tr><th width="42%" class="text-muted fw-normal">Booking ID</th>
-                            <td><code>${p.get("booking_id")}</code></td></tr>
-                        <tr><th class="text-muted fw-normal">Property</th>
-                            <td class="fw-semibold">${p.get("listing_name") || ""}</td></tr>
-                        <tr><th class="text-muted fw-normal">Guest</th>
-                            <td>${p.get("guest_name") || ""}</td></tr>
-                        <tr><th class="text-muted fw-normal">Email</th>
-                            <td>${p.get("guest_email") || ""}</td></tr>
-                        <tr><td colspan="2"><hr class="my-2"></td></tr>
-                        <tr><th class="text-muted fw-normal">Arrival</th>
-                            <td>${formatDate(p.get("arrival"))}</td></tr>
-                        <tr><th class="text-muted fw-normal">Departure</th>
-                            <td>${formatDate(p.get("departure"))}</td></tr>
-                        <tr><th class="text-muted fw-normal">Nights</th>
-                            <td>${p.get("nights") || ""}</td></tr>
-                        <tr><th class="text-muted fw-normal">Guests</th>
-                            <td>${p.get("guests") || ""}</td></tr>
-                        <tr><td colspan="2"><hr class="my-2"></td></tr>
-                        <tr><th class="text-muted fw-normal">Total</th>
-                            <td>$${parseFloat(p.get("total") || 0).toFixed(2)}</td></tr>
-                        <tr><th class="text-muted fw-normal">Deposit Paid</th>
-                            <td class="text-success">$${parseFloat(p.get("deposit") || 0).toFixed(2)}</td></tr>
-                        <tr><th class="text-muted fw-normal">Balance Due</th>
-                            <td class="fw-bold text-danger">$${parseFloat(p.get("balance") || 0).toFixed(2)}</td></tr>
-                        <tr><th class="text-muted fw-normal">Balance Due Date</th>
-                            <td>${formatDate(p.get("balance_due_date"))}</td></tr>
-                    </tbody>
-                </table>`;
+          <table class="table table-sm table-borderless mb-0">
+            <tbody>
+              <tr><th width="42%" class="text-muted fw-normal">Booking ID</th>
+                  <td><code>${p.get("booking_id")}</code></td></tr>
+              <tr><th class="text-muted fw-normal">Client ID</th>
+                  <td><code>${p.get("client_id") || ""}</code></td></tr>
+              <tr><th class="text-muted fw-normal">Property</th>
+                  <td class="fw-semibold">${p.get("listing_name") || ""}</td></tr>
+              <tr><th class="text-muted fw-normal">Guest</th>
+                  <td>${p.get("client_name") || ""}</td></tr>
+              <tr><th class="text-muted fw-normal">Email</th>
+                  <td>${p.get("email_address") || ""}</td></tr>
+              <tr><td colspan="2"><hr class="my-2"></td></tr>
+              <tr><th class="text-muted fw-normal">Arrival</th>
+                  <td>${formatDate(p.get("arrival"))}</td></tr>
+              <tr><th class="text-muted fw-normal">Departure</th>
+                  <td>${formatDate(p.get("departure"))}</td></tr>
+              <tr><th class="text-muted fw-normal">Nights</th>
+                  <td>${p.get("nights") || ""}</td></tr>
+              <tr><th class="text-muted fw-normal">Guests</th>
+                  <td>${p.get("guests") || ""}</td></tr>
+              <tr><td colspan="2"><hr class="my-2"></td></tr>
+              <tr><th class="text-muted fw-normal">Total</th>
+                  <td>$${parseFloat(p.get("total") || 0).toFixed(2)}</td></tr>
+              <tr><th class="text-muted fw-normal">Deposit Paid</th>
+                  <td class="text-success">$${parseFloat(p.get("deposit") || 0).toFixed(2)}</td></tr>
+              <tr><th class="text-muted fw-normal">Balance Due</th>
+                  <td class="fw-bold text-danger">$${parseFloat(p.get("balance") || 0).toFixed(2)}</td></tr>
+              <tr><th class="text-muted fw-normal">Balance Due Date</th>
+                  <td>${formatDate(p.get("balance_due_date"))}</td></tr>
+            </tbody>
+          </table>`;
       } else {
         el.innerHTML =
           '<p class="text-muted">No booking details available.</p>';
